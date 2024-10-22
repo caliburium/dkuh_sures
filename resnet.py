@@ -2,23 +2,26 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import wandb
 import numpy as np
 from tqdm import tqdm
-from sklearn.metrics import accuracy_score, recall_score
 from torchvision import models
-from nih_loader import nih_loader
+from functions.nih_loader import nih_loader
+from functions.calculate_metrics import calculate_metrics
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+disease_names = [
+    "Pneumonia", "Nodule", "Mass", "Infiltration", "Pneumothorax",
+    "Edema", "Pleural_Thickening", "Fibrosis", "Effusion",
+    "Consolidation", "Cardiomegaly", "Atelectasis", "Hernia", "Emphysema"
+]
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=200)
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--model', type=str, default='resnet101')
+    parser.add_argument('--model', type=str, default='resnet50')
     args = parser.parse_args()
 
     wandb.init(project="NIH_Chest_X-ray",
@@ -67,6 +70,7 @@ def main():
 
         test_model(model, test_loader, epoch, criterion)
 
+
 def test_model(model, test_loader, epoch, criterion):
     model.eval()
     true_labels = []
@@ -82,26 +86,26 @@ def test_model(model, test_loader, epoch, criterion):
             total_loss += loss.item()
 
             preds = torch.sigmoid(outputs) > 0.5
+
             true_labels.append(labels.cpu().numpy())
             predicted_labels.append(preds.cpu().numpy())
 
     true_labels = np.concatenate(true_labels)
     predicted_labels = np.concatenate(predicted_labels)
 
-    accuracy = accuracy_score(true_labels.flatten(), predicted_labels.flatten())
-    sensitivity = recall_score(true_labels.flatten(), predicted_labels.flatten(), average='macro')
-    specificity = recall_score(true_labels.flatten(), predicted_labels.flatten(), average='macro', pos_label=0)
+    metrics = calculate_metrics(true_labels, predicted_labels)
 
     avg_loss = total_loss / len(test_loader)
-    print(f'Test Loss: {avg_loss:.4f}, '
-          f'Accuracy: {accuracy:.4f}, '
-          f'Sensitivity: {sensitivity:.4f}, '
-          f'Specificity: {specificity:.4f}')
+    print(f'Test Loss: {avg_loss:.4f}')
+
+    for i, (acc, sens, spec) in enumerate(zip(metrics['accuracy'], metrics['sensitivity'], metrics['specificity'])):
+        print(f'{disease_names[i]}: Accuracy: {acc:.4f}, Sensitivity: {sens:.4f}, Specificity: {spec:.4f}')
+
     wandb.log({
         'Test Loss': avg_loss,
-        'Test Accuracy': accuracy,
-        'Test Sensitivity': sensitivity,
-        'Test Specificity': specificity
+        **{f'Accuracy_{disease_names[i]}': acc for i, acc in enumerate(metrics['accuracy'])},
+        **{f'Sensitivity_{disease_names[i]}': sens for i, sens in enumerate(metrics['sensitivity'])},
+        **{f'Specificity_{disease_names[i]}': spec for i, spec in enumerate(metrics['specificity'])}
     }, step=epoch + 1)
 
 if __name__ == '__main__':
