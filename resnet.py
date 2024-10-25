@@ -20,8 +20,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=200)
-    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--model', type=str, default='resnet50')
+    parser.add_argument('--pretrain', type=bool, default=False)
     args = parser.parse_args()
 
     wandb.init(project="NIH_Chest_X-ray",
@@ -33,11 +34,11 @@ def main():
     train_loader, test_loader = nih_loader(batch_size=args.batch_size, num_workers=4, resize=True)
 
     if args.model == 'resnet50':
-        model = models.resnet50(pretrained=True)
+        model = models.resnet50(pretrained=args.pretrain)
         model.fc = nn.Linear(model.fc.in_features, 14)
         model = model.to(device)
     elif args.model == 'resnet101':
-        model = models.resnet101(pretrained=True)
+        model = models.resnet101(pretrained=args.pretrain)
         model.fc = nn.Linear(model.fc.in_features, 14)
         model = model.to(device)
     else:
